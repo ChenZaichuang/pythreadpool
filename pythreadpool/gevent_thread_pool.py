@@ -67,7 +67,7 @@ class GeventThreadPool:
 
     def new_shared_pool(self, max_thread=0, exit_for_any_exception=False):
         return GeventThreadPool(semaphore=self.main_semaphore, exit_for_any_exception=exit_for_any_exception,
-                          max_thread=max_thread if max_thread > 0 else self.max_thread)
+                                max_thread=max_thread if max_thread > 0 else self.max_thread)
 
     def get_results_order_by_index(self, raise_exception=False, with_status=False, stop_all_for_exception=False, with_index=False):
         self.valid_for_new_thread = False

@@ -12,7 +12,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="pythreadpool",
-    version="1.0.1",
+    version="1.0.3",
     keywords=("pip", "pythreadpool", "thread pool"),
     description="Thread pool for async jobs manage",
     long_description="Provide unified api of native thread and gevent, make it easy to manage async jobs",

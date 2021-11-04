@@ -75,7 +75,7 @@ class NativeThreadPool:
             if thread_number not in killed_threads:
                 thread_res_queue.put((thread_number, success, res))
 
-    def apply_async(self, func, args=None, kwargs=None):
+    def apply_async(self, func, args=None, kwargs=None, daemon=True):
         assert self.valid_for_new_thread
         self.main_semaphore.acquire()
         self.sub_semaphore.acquire()
@@ -83,7 +83,7 @@ class NativeThreadPool:
             args = tuple()
         if kwargs is None:
             kwargs = dict()
-        thread = ThreadWithException(target=self.start_thread, args=(len(self.thread_list), func, args, kwargs))
+        thread = ThreadWithException(target=self.start_thread, args=(len(self.thread_list), func, args, kwargs), daemon=daemon)
         self.thread_list.append(thread)
         thread.start()
         return thread
@@ -142,7 +142,6 @@ class NativeThreadPool:
             if should_break:
                 break
 
-
     def get_one_result(self, raise_exception=False, with_status=False, with_index=False, stop_all_for_exception=False):
         while True:
             thread_number, success, res = self._thread_res_queue.get()
@@ -193,11 +192,11 @@ class NativeThreadPool:
         self._thread_res_queue = Queue()
 
     @classmethod
-    def new_thread(cls, target, args=None, kwargs=None):
+    def new_thread(cls, target, args=None, kwargs=None, daemon=True):
         args = args if args is not None else tuple()
         kwargs = kwargs if kwargs is not None else dict()
         def start():
             target(*args, **kwargs)
-        th = ThreadWithException(target=start)
+        th = ThreadWithException(target=start, daemon=daemon)
         th.start()
         return th
