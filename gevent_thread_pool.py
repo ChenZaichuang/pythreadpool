@@ -14,7 +14,7 @@ class GeventThreadPool:
 
     __slots__ = ('max_thread', 'main_semaphore', 'sub_semaphore', 'exit_for_any_exception',
                  '_thread_res_queue', 'valid_for_new_thread', 'log_exception', 'thread_list',
-                 'completed_threads', 'killed_threads')
+                 'completed_threads', 'killed_threads', 'raise_exception', 'happened_exception')
 
     def __init__(self, **kwargs):
         assert 'total_thread_number' in kwargs or ('semaphore' in kwargs and 'max_thread' in kwargs)
@@ -27,9 +27,14 @@ class GeventThreadPool:
             self.main_semaphore = kwargs['semaphore']
             self.sub_semaphore = BoundedSemaphore(self.max_thread)
         self.exit_for_any_exception = kwargs.get("exit_for_any_exception", False)
+        self.raise_exception = kwargs.get("raise_exception", False)
         self._thread_res_queue = Queue()
         self.valid_for_new_thread = True
+        self._thread_res_queue = Queue()
+        self.happened_exception = None
         self.log_exception = kwargs.get('log_exception', True)
+        if self.raise_exception:
+            self.log_exception = True
         self.thread_list = []
         self.completed_threads = set()
         self.killed_threads = set()
@@ -40,6 +45,7 @@ class GeventThreadPool:
         try:
             res = func(*args, **kwargs)
         except Exception as e:
+            self.happened_exception = e
             res = e
             err_msg = traceback.format_exc()
             if self.log_exception:
@@ -55,6 +61,8 @@ class GeventThreadPool:
 
     def apply_async(self, func, args=None, kwargs=None):
         assert self.valid_for_new_thread
+        if self.raise_exception and self.happened_exception is not None:
+            raise self.happened_exception
         self.main_semaphore.acquire()
         self.sub_semaphore.acquire()
         if args is None:
@@ -67,7 +75,7 @@ class GeventThreadPool:
 
     def new_shared_pool(self, max_thread=0, exit_for_any_exception=False):
         return GeventThreadPool(semaphore=self.main_semaphore, exit_for_any_exception=exit_for_any_exception,
-                          max_thread=max_thread if max_thread > 0 else self.max_thread)
+                                max_thread=max_thread if max_thread > 0 else self.max_thread)
 
     def get_results_order_by_index(self, raise_exception=False, with_status=False, stop_all_for_exception=False, with_index=False):
         self.valid_for_new_thread = False
@@ -118,7 +126,6 @@ class GeventThreadPool:
             if should_break:
                 break
 
-
     def get_one_result(self, raise_exception=False, with_status=False, with_index=False, stop_all_for_exception=False):
         thread_number, success, res = self._thread_res_queue.get()
         self.killed_threads.add(thread_number)
@@ -166,6 +173,7 @@ class GeventThreadPool:
         self.completed_threads = set()
         self.killed_threads = set()
         self._thread_res_queue = Queue()
+        self.happened_exception = None
 
     @classmethod
     def new_thread(cls, target, args=None, kwargs=None):

@@ -1,10 +1,15 @@
 import ctypes
 import logging
 import os
+import queue
 from queue import Queue
 import traceback
 import threading
 from threading import BoundedSemaphore
+
+
+class ThreadTimeout(Exception):
+    pass
 
 
 class ThreadWithException(threading.Thread):
@@ -29,7 +34,7 @@ class NativeThreadPool:
 
     __slots__ = ('max_thread', 'main_semaphore', 'sub_semaphore', 'exit_for_any_exception',
                  '_thread_res_queue', 'valid_for_new_thread', 'log_exception', 'thread_list',
-                 'completed_threads', 'killed_threads')
+                 'completed_threads', 'killed_threads', 'raise_exception', 'happened_exception')
 
     def __init__(self, **kwargs):
         assert 'total_thread_number' in kwargs or ('semaphore' in kwargs and 'max_thread' in kwargs)
@@ -42,9 +47,13 @@ class NativeThreadPool:
             self.main_semaphore = kwargs['semaphore']
             self.sub_semaphore = BoundedSemaphore(self.max_thread)
         self.exit_for_any_exception = kwargs.get("exit_for_any_exception", False)
-        self._thread_res_queue = Queue()
+        self.raise_exception = kwargs.get("raise_exception", False)
         self.valid_for_new_thread = True
+        self._thread_res_queue = Queue()
+        self.happened_exception = None
         self.log_exception = kwargs.get('log_exception', True)
+        if self.raise_exception:
+            self.log_exception = True
         self.thread_list = []
         self.completed_threads = set()
         self.killed_threads = set()
@@ -60,13 +69,13 @@ class NativeThreadPool:
         try:
             res = func(*args, **kwargs)
         except Exception as e:
+            self.happened_exception = e
             res = e
             err_msg = traceback.format_exc()
             if self.log_exception:
                 logging.error(f"Thread {thread_number} failed, error msg: \n{err_msg}")
             if self.exit_for_any_exception:
                 os._exit(-1)
-
             success = False
         finally:
             main_semaphore.release()
@@ -75,15 +84,17 @@ class NativeThreadPool:
             if thread_number not in killed_threads:
                 thread_res_queue.put((thread_number, success, res))
 
-    def apply_async(self, func, args=None, kwargs=None):
+    def apply_async(self, func, args=None, kwargs=None, daemon=True):
         assert self.valid_for_new_thread
+        if self.raise_exception and self.happened_exception is not None:
+            raise self.happened_exception
         self.main_semaphore.acquire()
         self.sub_semaphore.acquire()
         if args is None:
             args = tuple()
         if kwargs is None:
             kwargs = dict()
-        thread = ThreadWithException(target=self.start_thread, args=(len(self.thread_list), func, args, kwargs))
+        thread = ThreadWithException(target=self.start_thread, args=(len(self.thread_list), func, args, kwargs), daemon=daemon)
         self.thread_list.append(thread)
         thread.start()
         return thread
@@ -142,22 +153,24 @@ class NativeThreadPool:
             if should_break:
                 break
 
-
-    def get_one_result(self, raise_exception=False, with_status=False, with_index=False, stop_all_for_exception=False):
+    def get_one_result(self, raise_exception=False, with_status=False, with_index=False, stop_all_for_exception=False, timeout=None):
         while True:
-            thread_number, success, res = self._thread_res_queue.get()
-            if thread_number in self.killed_threads:
-                continue
-            self.killed_threads.add(thread_number)
-            if not success:
-                if stop_all_for_exception:
-                    self.stop_all()
-                if raise_exception:
-                    raise res
-            if with_index:
-                return (thread_number, success, res) if with_status else (thread_number, res)
-            else:
-                return (success, res) if with_status else res
+            try:
+                thread_number, success, res = self._thread_res_queue.get(timeout=timeout)
+                if thread_number in self.killed_threads:
+                    continue
+                self.killed_threads.add(thread_number)
+                if not success:
+                    if stop_all_for_exception:
+                        self.stop_all()
+                    if raise_exception:
+                        raise res
+                if with_index:
+                    return (thread_number, success, res) if with_status else (thread_number, res)
+                else:
+                    return (success, res) if with_status else res
+            except queue.Empty:
+                raise ThreadTimeout(f'Thread timeout after {timeout} seconds')
 
     def wait_all_threads(self, raise_exception=False, stop_all_for_exception=False):
         for _ in range(len(self.thread_list) - len(self.killed_threads)):
@@ -191,13 +204,14 @@ class NativeThreadPool:
         self.completed_threads = set()
         self.killed_threads = set()
         self._thread_res_queue = Queue()
+        self.happened_exception = None
 
     @classmethod
-    def new_thread(cls, target, args=None, kwargs=None):
+    def new_thread(cls, target, args=None, kwargs=None, daemon=True):
         args = args if args is not None else tuple()
         kwargs = kwargs if kwargs is not None else dict()
         def start():
             target(*args, **kwargs)
-        th = ThreadWithException(target=start)
+        th = ThreadWithException(target=start, daemon=daemon)
         th.start()
         return th
