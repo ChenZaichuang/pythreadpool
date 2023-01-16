@@ -34,7 +34,8 @@ class NativeThreadPool:
 
     __slots__ = ('max_thread', 'main_semaphore', 'sub_semaphore', 'exit_for_any_exception',
                  '_thread_res_queue', 'valid_for_new_thread', 'log_exception', 'thread_list',
-                 'completed_threads', 'killed_threads', 'raise_exception', 'happened_exception')
+                 'completed_threads', 'killed_threads', 'raise_exception', 'happened_exception',
+                 'inherit_locals', 'context_key', '_context')
 
     def __init__(self, **kwargs):
         assert 'total_thread_number' in kwargs or ('semaphore' in kwargs and 'max_thread' in kwargs)
@@ -46,6 +47,10 @@ class NativeThreadPool:
             self.max_thread = kwargs['max_thread']
             self.main_semaphore = kwargs['semaphore']
             self.sub_semaphore = BoundedSemaphore(self.max_thread)
+        self.inherit_locals = kwargs.get('inherit_locals', False)
+        if self.inherit_locals:
+            self.context_key = kwargs.get('context_key', 'context')
+            self._context = threading.current_thread().__dict__.get(self.context_key, dict())
         self.exit_for_any_exception = kwargs.get("exit_for_any_exception", False)
         self.raise_exception = kwargs.get("raise_exception", False)
         self.valid_for_new_thread = True
@@ -67,6 +72,8 @@ class NativeThreadPool:
         completed_threads = self.completed_threads
         killed_threads = self.killed_threads
         try:
+            if self.inherit_locals:
+                threading.current_thread().__dict__[self.context_key] = self._context
             res = func(*args, **kwargs)
         except Exception as e:
             self.happened_exception = e

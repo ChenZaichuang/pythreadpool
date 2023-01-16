@@ -1,10 +1,7 @@
 import datetime
 import os, sys
 from unittest import mock
-
 import unittest
-
-
 import logging
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
@@ -15,33 +12,26 @@ global Queue
 global Full
 global ExitException
 
-class ThreadPoolTest(unittest.TestCase):
 
-    __test__ = False
+class NativeThreadPoolTest(unittest.TestCase):
 
-    # @classmethod
-    # def setUpClass(cls) -> None:
-    #     assert cls.thread_type in {'native', 'gevent'}
-    #
-    #     if cls.thread_type == 'native':
-    #         global ThreadPool
-    #         global sleep
-    #         global Queue
-    #         global Full
-    #         global ExitException
-    #         from native_thread_pool import NativeThreadPool as _ThreadPool
-    #         ThreadPool = _ThreadPool
-    #         from time import sleep as _sleep
-    #         sleep = _sleep
-    #         from queue import Queue as _Queue, Full as _Full
-    #         Queue = _Queue
-    #         Full = _Full
-    #         ExitException = SystemExit
-    #     if cls.thread_type == 'gevent':
-    #         from gevent_thread_pool import GeventThreadPool as ThreadPool
-    #         from gevent import sleep
-    #         from gevent.queue import Queue, Full
-    #         from greenlet import GreenletExit as ExitException
+    thread_type = ''
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        global ThreadPool
+        global sleep
+        global Queue
+        global Full
+        global ExitException
+        from native_thread_pool import NativeThreadPool as _ThreadPool
+        ThreadPool = _ThreadPool
+        from time import sleep as _sleep
+        sleep = _sleep
+        from queue import Queue as _Queue, Full as _Full
+        Queue = _Queue
+        Full = _Full
+        ExitException = SystemExit
 
     def func_with_args_and_kwargs(self, param, *args, **kwargs):
         return ','.join([str(param), str(args), str(kwargs)])

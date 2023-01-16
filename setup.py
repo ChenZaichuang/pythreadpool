@@ -12,8 +12,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="pythreadpool",
-    version="1.0.6",
-    keywords=("pip", "pythreadpool", "thread pool"),
+    version="1.0.7",
+    keywords=["pip", "pythreadpool", "thread pool"],
     description="Thread pool for async jobs manage",
     long_description="Provide unified api of native thread and gevent, make it easy to manage async jobs",
     license="MIT Licence",
